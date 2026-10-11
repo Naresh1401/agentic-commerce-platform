@@ -2,31 +2,54 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Shared checks from https://github.com/Naresh1401/github-cicd-workflows
 jobs:
-  backend-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install backend dependencies
-        run: pip install -r backend/requirements.txt
-      - name: Run tests
-        run: pytest backend/tests testing
+  python:
+    name: Python
+    uses: Naresh1401/github-cicd-workflows/.github/workflows/python-ci.yml@v1
+    with:
+      install-command: python -m pip install -r backend/requirements.txt
+      test-command: python -m pytest backend/tests testing
 
-  frontend-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
+  node:
+    name: Node
+    uses: Naresh1401/github-cicd-workflows/.github/workflows/node-ci.yml@v1
+    with:
+      working-directory: frontend
+      node-version: '20'
+      lint-command: ''
+      test-command: ''
+
+  container:
+    name: Docker image
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: agents/Dockerfile
+            context: agents
+          - dockerfile: backend/Dockerfile
+            context: backend
+          - dockerfile: frontend/Dockerfile
+            context: frontend
+          - dockerfile: mcp-server/Dockerfile
+            context: mcp-server
+    uses: Naresh1401/github-cicd-workflows/.github/workflows/container.yml@v1
+    with:
+      dockerfile: ${{ matrix.dockerfile }}
+      context: ${{ matrix.context }}
+
+  repo-lint:
+    name: Repository lint
+    uses: Naresh1401/github-cicd-workflows/.github/workflows/repo-lint.yml@v1
